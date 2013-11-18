@@ -89,8 +89,27 @@ template<class T> void CPP(const v8::FunctionCallbackInfo<T>& info)
   HandleScope scope(Isolate::GetCurrent());
   Local<Object> obj = Object::New();
   int length = info.Length();
+
+
+  Local<Function> callee     = info.Callee();
+  Local<Object>   obj_this   = info.This();
+  Local<Object>   holder     = info.Holder();
+  bool            _iscontruct = info.IsConstructCall();
+  Local<Value>    iscontruct  = v8::Integer::NewFromUnsigned(_iscontruct);
+  Local<Value>    data       = info.Data();
+  //  Isolate*        isolate    = info.GetIsolate();
+  //ReturnValue<T>  returnval  = info.GetReturnValue();
+
+
   obj->Set(String::NewSymbol("Length"), 
            v8::Integer::NewFromUnsigned(length));  
+  obj->Set(String::NewSymbol("Callee"), callee);
+  obj->Set(String::NewSymbol("This"), obj_this);
+  obj->Set(String::NewSymbol("Holder"), holder);
+  obj->Set(String::NewSymbol("IsConstruct"), iscontruct);
+  obj->Set(String::NewSymbol("Data"), data);
+  //  obj->Set(String::NewSymbol("Isolate"), isolate);
+  //obj->Set(String::NewSymbol("Return"), returnval);
 
   for (int i = 0; i < length; i ++) {
     char buffer[256];
