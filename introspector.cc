@@ -1,5 +1,5 @@
 #include <node.h>
-#include <env.h>
+//#include <env.h>
 //#include "env-inl.h"
 
 using namespace v8;
@@ -31,7 +31,7 @@ template<class T> void JavaScriptEnv(const v8::FunctionCallbackInfo<T>& info)
   Local<Object> obj = Object::New();
 
 
-  Environment* env = env();//Environment::GetCurrent(context);
+  //Environment* env = env();//Environment::GetCurrent(context);
 
   obj->Set(String::NewSymbol("context"), FunctionTemplate::New(JavaScriptContext)->GetFunction());
   info.GetReturnValue().Set(obj);

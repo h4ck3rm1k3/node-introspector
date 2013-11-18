@@ -1,6 +1,6 @@
 var addon = require('./build/Release/introspector');
 
-//console.log('introspector', addon.introspector()); 
+console.log('introspector', addon.introspector); 
 i = addon.introspector();
 //console.log('introspector', i.javascript()); 
 js = i.javascript();
