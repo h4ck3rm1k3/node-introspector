@@ -1,0 +1,8 @@
+{
+  "name": "introspector",
+  "version": "0.0.0",
+  "description": "Node.js introspector",
+  "main": "introspector.js",
+  "private": false,
+  "gypfile": true
+}
