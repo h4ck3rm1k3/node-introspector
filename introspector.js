@@ -15,4 +15,4 @@ console.log('ctx', context);
 glbl = context.global();
 console.log('glb', glbl); 
 
-//console.log('introspector', i.cpp()); 
+console.log('introspector cpp:', i.cpp(addon.introspector)); 
