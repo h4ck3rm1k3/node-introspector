@@ -39,54 +39,121 @@ using namespace v8;
 #include <v8-profiler.h>
 #include <v8-testing.h>
 
-
-
-template <class T2> Handle<Object> wrap_object(T2 * o) {
-  Handle<ObjectTemplate> object_templ = ObjectTemplate::New();
-  object_templ->SetInternalFieldCount(1);
-  o->install_accessors(object_templ);
-
-  Local<Object> obj = object_templ->NewInstance();
-  obj->SetInternalField(0, External::New(o));
-  return obj;
+template <class T1, class T2> void install_accessors(T1 o, T2 object_teml) {
+  o->install_accessors(object_teml);
 }
 
 
-class HeadProfilerAdaptor : public v8::HeapProfiler {
+/*
+  wrap an external object and install fields to access them
+*/
+template <class T2> Handle<Object> wrap_object(T2 * o) {
 
-};
+  // create a new template object
+  Handle<ObjectTemplate> object_templ = ObjectTemplate::New();
+  
+  // set the field count to one, this is the external pointer
+  object_templ->SetInternalFieldCount(1);
 
-template<class SELF, class FIELD, class METHOD >  void GetT(
-                                                            Local<String> property,
-                                                            const v8::PropertyCallbackInfo<Value>& info
-                                                            ) 
-{
-  Local<Object> self = info.Holder();
-  Local<External> wrap = Local<External>::Cast(self->GetInternalField(0));// this object
-  void* ptr = wrap->Value();
-  FIELD value =  static_cast<SELF*>(ptr)->METHOD();
-  info.GetReturnValue().Set(value);
+  // install the custom accessor methods into the template
+  install_accessors(o, object_templ);
+
+  // create an instance of the template for usag
+  Local<Object> obj = object_templ->NewInstance();
+
+  // make a pointer to the external object
+  v8::Handle<v8::Value> external_object = External::New(o);
+    
+  // set the this pointer 
+  obj->SetInternalField(0, external_object);
+
+  return obj;
 }
 
 template<class SELF, 
          class METHODRET ,
-         class METHODRETNATIVE 
+         class METHODRETNATIVE
          > 
-void GetAdaptor(
+void GetNativeAdaptor(
                 const char * NAME, 
                 const v8::FunctionCallbackInfo<v8::Value>& info, 
                 Local<Object> obj ,
-                METHODRETNATIVE  (SELF::*method)()const
+                METHODRETNATIVE  (SELF::*method)()const                
                 )
 {
   SELF  object = (SELF)info;
-  //‘operator->*’ (operand types are ‘const v8::FunctionCallbackInfo<v8::Value>’ 
-  //                         ‘v8::Isolate* (v8::FunctionCallbackInfo<v8::Value>::*)()const’)
 
-  (object.*method)();
-
+  // call the method
   METHODRET result = (METHODRET)(object.*method)();
-  obj->Set(String::NewSymbol(NAME), wrap_object(result));
+
+  // it is a native object , so create a generic wrapper for it
+  v8::Handle<v8::Value> wrapped_result = wrap_object(result);
+
+  // set the field
+  obj->Set(String::NewSymbol(NAME), wrapped_result);
+}
+
+template<class SELF, 
+         class METHODRETNATIVE
+         > 
+void set_field_from_method_call(
+                const char * NAME, 
+                const v8::FunctionCallbackInfo<v8::Value>& info, 
+                Local<Object> obj ,
+                METHODRETNATIVE  (SELF::*method)()const                
+                )
+{
+  SELF  object = (SELF)info;
+
+  // call the method
+  METHODRETNATIVE result = (object.*method)();
+  
+  // store the result directly
+  obj->Set(String::NewSymbol(NAME), result);
+}
+
+
+template<class SELF, 
+         class METHODRETNATIVE
+         > 
+void set_unsigned_field_from_method_call(
+                const char * NAME, 
+                const v8::FunctionCallbackInfo<v8::Value>& info, 
+                Local<Object> obj ,
+                METHODRETNATIVE  (SELF::*method)()const 
+                )
+{
+  SELF  object = (SELF)info;
+
+  // call the method
+  METHODRETNATIVE result = (object.*method)();
+  
+  // store the result directly
+  obj->Set(String::NewSymbol(NAME), v8::Integer::NewFromUnsigned(result));
+}
+
+class HeadProfilerAdaptor : public v8::HeapProfiler {};
+
+template<
+  class FIELD, 
+  FIELD (*foo)()
+ >  void GetT2(
+               class v8::Local<v8::String>  property, 
+               const class v8::PropertyCallbackInfo<v8::Value>& info               
+                                     ) 
+{
+  // the holder contains the this pointer
+  Local<Object> self = info.Holder();
+
+  // the wrap around the this pointer
+  Local<External> wrap = Local<External>::Cast(self->GetInternalField(0));// this object
+
+  void* this_ptr = wrap->Value();
+
+  // call the function pointer via the template param
+  FIELD value = (*foo)();
+
+  info.GetReturnValue().Set(value);
 }
 
 class IsolateAdaptor : public v8::Isolate
@@ -153,7 +220,6 @@ public:
     Local<External> wrap = Local<External>::Cast(self->GetInternalField(0));
     void* ptr = wrap->Value();
     long value =  (long)static_cast<IsolateAdaptor*>(ptr)->GetData();
-    //returnval = 
     info.GetReturnValue().Set(Integer::New(value));
   }
 
@@ -162,185 +228,62 @@ public:
     Handle<String> object_name(String::New("data"));
     AccessorGetterCallback cb=GetDataAccessor;
     t->SetAccessor(object_name, cb);
+
+    ///
+    Handle<String> object_name2(String::New("data2"));
+
+
+    //AccessorGetterCallback cb2= &GetT2<long, IsolateAdaptor::GetData>;
+    //t->SetAccessor(object_name2, cb2);
+
   }
 
 };
 
-
-
-/*
-  this class is not used yet, see the wrap_object above for wrapping an existing object
-*/
-template <class T2> 
-class TWrap : public node::ObjectWrap
+template<class SELF, class FIELD, class METHODRETNATIVE >  
+void GetT(
+          Local<String> property,
+          const v8::PropertyCallbackInfo<Value>& info,
+          METHODRETNATIVE  (SELF::*method)()const 
+          ) 
 {
-public:
+  // the holder contains the this pointer
+  Local<Object> self = info.Holder();
 
-  static void Init() {
-    /*
-      install the new function
-    */
-    Isolate* isolate = Isolate::GetCurrent();
-    HandleScope scope(isolate);
-    // Prepare constructor template
-    Local<FunctionTemplate> tpl = FunctionTemplate::New(New);
-    tpl->SetClassName(String::NewSymbol(T2::getName()));
-    tpl->InstanceTemplate()->SetInternalFieldCount(T2::getFieldCount());
-    constructor.Reset(isolate, tpl->GetFunction());
-  }
+  // the wrap around the this pointer
+  Local<External> wrap = Local<External>::Cast(self->GetInternalField(0));// this object
 
-  static void NewInstance(const v8::FunctionCallbackInfo<v8::Value>& info)
-  {
-    /*
-  
-     */
-    Isolate* isolate = Isolate::GetCurrent();
-    HandleScope scope(isolate);
-    const unsigned argc = 1;
-    Handle<Value> argv[argc] = { info[0] };
-    Local<Object> instance = Local<Function>::New(isolate, constructor)->NewInstance(argc, argv);
-    info.GetReturnValue().Set(instance);
+  // the this poitner
+  void* this_ptr = wrap->Value();
 
-  }
+  FIELD value = (FIELD)(this_ptr.*method)();
 
-  T2 Val() const { return val_; }
-
-private:
-  TWrap() {}
-  ~TWrap() {}
-
-  static v8::Persistent<v8::Function> constructor;
-
-  template<class T> static void New(const v8::FunctionCallbackInfo<T>& info){
-    /*
-      extract value from info and wrap it
-    */
-    Isolate* isolate = Isolate::GetCurrent();
-    HandleScope scope(isolate);
-    TWrap<T2>* obj = new TWrap<T2>();
-    obj->val_ = info[0]->IsUndefined() ? T2::DefaultValue() : T2::ExtractValue(info[0]);
-    obj->Wrap(info.This());
-  }
-
-  T2 val_;
-};
-
-typedef TWrap<IsolateAdaptor> IsolateWrap;
-
-//  Local<Object> global = env->context()->Global();
-
-template<class T> void JavaScriptGlobal(const v8::FunctionCallbackInfo<T>& info) 
-{
-  HandleScope scope(Isolate::GetCurrent());
-  Local<Object> obj = Object::New();
-  info.GetReturnValue().Set(obj);
+  info.GetReturnValue().Set(value);
 }
 
-template<class T> void JavaScriptContext(const v8::FunctionCallbackInfo<T>& info) 
-{
-  HandleScope scope(Isolate::GetCurrent());
-  Local<Object> obj = Object::New();
-  obj->Set(String::NewSymbol("global"), 
-           FunctionTemplate::New(                                 
-                                 JavaScriptGlobal
-                                                                  )->GetFunction());
-  info.GetReturnValue().Set(obj);
-}
-
-template<class T> void JavaScriptEnv(const v8::FunctionCallbackInfo<T>& info) 
-{
-  HandleScope scope(Isolate::GetCurrent());
-  Local<Object> obj = Object::New();
 
 
-  //Environment* env = env();//Environment::GetCurrent(context);
+//typedef TWrap<IsolateAdaptor> IsolateWrap;
 
-  obj->Set(String::NewSymbol("context"), FunctionTemplate::New(JavaScriptContext)->GetFunction());
-  info.GetReturnValue().Set(obj);
-}
-
-template<class T> void JavaScript(const v8::FunctionCallbackInfo<T>& info) 
-{
-  HandleScope scope(Isolate::GetCurrent());
-  Local<Object> obj = Object::New();
-  // TODO : this is basically the process object... we need to check if it can be leveraged.
-  obj->Set(String::NewSymbol("env"), 
-           FunctionTemplate::New(JavaScriptEnv)->GetFunction());
-
-  info.GetReturnValue().Set(obj);
-}
-
-/*
-  template<typename T>
-  class FunctionCallbackInfo {
-  public:
-  inline __attribute__((always_inline)) int Length() const;
-  inline __attribute__((always_inline)) Local<Value> operator[](int i) const;
-  inline __attribute__((always_inline)) Local<Function> Callee() const;
-  inline __attribute__((always_inline)) Local<Object> This() const;
-  inline __attribute__((always_inline)) Local<Object> Holder() const;
-  inline __attribute__((always_inline)) bool IsConstructCall() const;
-  inline __attribute__((always_inline)) Local<Value> Data() const;
-  inline __attribute__((always_inline)) Isolate* GetIsolate() const;
-  inline __attribute__((always_inline)) ReturnValue<T> GetReturnValue() const;
-  static const int kArgsLength = 7;
-  protected:
-  friend class internal::FunctionCallbackArguments;
-  friend class internal::CustomArguments<FunctionCallbackInfo>;
-  static const int kHolderIndex = 0;
-  static const int kIsolateIndex = 1;
-  static const int kReturnValueDefaultValueIndex = 2;
-  static const int kReturnValueIndex = 3;
-  static const int kDataIndex = 4;
-  static const int kCalleeIndex = 5;
-  static const int kContextSaveIndex = 6;
-  inline __attribute__((always_inline)) FunctionCallbackInfo(internal::Object** implicit_args,
-  internal::Object** values,
-  int length,
-  bool is_construct_call);
-  internal::Object** implicit_args_;
-  internal::Object** values_;
-  int length_;
-  bool is_construct_call_;
-  };
-
-*/
 template<class T> void CPP(const v8::FunctionCallbackInfo<T>& info) 
 {
   HandleScope scope(Isolate::GetCurrent());
   Local<Object> obj = Object::New();
-  int length = info.Length();
 
+  set_unsigned_field_from_method_call ("IsConstruct",info, obj, &v8::FunctionCallbackInfo<T>::IsConstructCall);
+  set_unsigned_field_from_method_call ("Length",info, obj, &v8::FunctionCallbackInfo<T>::Length);
+  set_field_from_method_call ("This",info, obj, &v8::FunctionCallbackInfo<T>::This );
+  set_field_from_method_call ("Callee",info, obj, &v8::FunctionCallbackInfo<T>::Callee );
+  set_field_from_method_call ("Holder",info, obj, &v8::FunctionCallbackInfo<T>::Holder );
+  set_field_from_method_call ("Data" , info, obj, &v8::FunctionCallbackInfo<T>::Data );
 
-  Local<Function> callee     = info.Callee();
-  Local<Object>   obj_this   = info.This();
-  Local<Object>   holder     = info.Holder();
-  bool            _iscontruct = info.IsConstructCall();
-  Local<Value>    iscontruct  = v8::Integer::NewFromUnsigned(_iscontruct);
-  Local<Value>    data       = info.Data();
+  GetNativeAdaptor<const v8::FunctionCallbackInfo<T>, IsolateAdaptor *, v8::Isolate* > ("Isolate", info, obj, &v8::FunctionCallbackInfo<T>::GetIsolate  );
 
-  // an adaptor 
-  IsolateAdaptor*   isolate_val = (IsolateAdaptor*)info.GetIsolate();
-  
-  obj->Set(String::NewSymbol("Length"), 
-           v8::Integer::NewFromUnsigned(length));  
-  obj->Set(String::NewSymbol("Callee"), callee);
-  obj->Set(String::NewSymbol("This"), obj_this);
-  obj->Set(String::NewSymbol("Holder"), holder);
-  obj->Set(String::NewSymbol("IsConstruct"), iscontruct);
-  obj->Set(String::NewSymbol("Data"), data);
-
-  GetAdaptor<const v8::FunctionCallbackInfo<T>, IsolateAdaptor *,v8::Isolate*> ("Isolate2", info, obj, &v8::FunctionCallbackInfo<T>::GetIsolate );
-
-
-  obj->Set(String::NewSymbol("Isolate"), wrap_object(isolate_val));
-  //obj->Set(String::NewSymbol("Return"), returnval);
-
-  for (int i = 0; i < length; i ++) {
+  // now we put in all the arguments into an array
+  for (int i = 0; i < info.Length(); i ++) {
     char buffer[256];
     sprintf(buffer,"Argument_%d",i);
-    obj->Set(String::NewSymbol(buffer), 
-             info[i]);  
+    obj->Set(String::NewSymbol(buffer),  info[i]);  
   }
 
   info.GetReturnValue().Set(obj);
@@ -350,8 +293,8 @@ template<class T> void Method(const v8::FunctionCallbackInfo<T>& info)
 {
   HandleScope scope(Isolate::GetCurrent());
   Local<Object> obj = Object::New();
-  obj->Set(String::NewSymbol("javascript"), 
-           FunctionTemplate::New(JavaScript)->GetFunction());
+  //obj->Set(String::NewSymbol("javascript"), 
+  //           FunctionTemplate::New(JavaScript)->GetFunction());
   obj->Set(String::NewSymbol("cpp"),        
            FunctionTemplate::New(CPP)->GetFunction());            
   info.GetReturnValue().Set(obj);
