@@ -43,6 +43,32 @@ template <class T1, class T2> void install_accessors(T1 o, T2 object_teml) {
   o->install_accessors(object_teml);
 }
 
+template<
+  void* (v8::Isolate::* foo)()
+ >  void GetT2(
+               class v8::Local<v8::String>  property, 
+               const class v8::PropertyCallbackInfo<v8::Value>& info               
+                                     ) 
+{
+  // the holder contains the this pointer
+  Local<Object> self = info.Holder();
+
+  // the wrap around the this pointer
+  Local<External> wrap = Local<External>::Cast(self->GetInternalField(0));// this object
+
+  void* this_ptr = wrap->Value();
+  v8::Isolate * this_obj =this_ptr;
+  // call the function pointer via the template param
+  void* value = (*this_obj.*foo)();
+
+  info.GetReturnValue().Set(value);
+}
+
+
+template < class T >  void GetT3(       ) 
+{
+}
+
 
 /*
   wrap an external object and install fields to access them
@@ -134,27 +160,6 @@ void set_unsigned_field_from_method_call(
 
 class HeadProfilerAdaptor : public v8::HeapProfiler {};
 
-template<
-  class FIELD, 
-  FIELD (*foo)()
- >  void GetT2(
-               class v8::Local<v8::String>  property, 
-               const class v8::PropertyCallbackInfo<v8::Value>& info               
-                                     ) 
-{
-  // the holder contains the this pointer
-  Local<Object> self = info.Holder();
-
-  // the wrap around the this pointer
-  Local<External> wrap = Local<External>::Cast(self->GetInternalField(0));// this object
-
-  void* this_ptr = wrap->Value();
-
-  // call the function pointer via the template param
-  FIELD value = (*foo)();
-
-  info.GetReturnValue().Set(value);
-}
 
 class IsolateAdaptor : public v8::Isolate
 {
@@ -234,11 +239,61 @@ public:
 
 
     //AccessorGetterCallback cb2= &GetT2<long, IsolateAdaptor::GetData>;
-    //t->SetAccessor(object_name2, cb2);
+    //    t->SetAccessor(object_name2, &GetT2<long, IsolateAdaptor::GetData>);
 
   }
 
 };
+
+typedef void* (v8::Isolate::* t_callback)();
+
+class FOO {
+public:
+  inline __attribute__((always_inline)) void* GetData(){
+    return 0;
+  }
+};
+
+template <class METHOD_TYPE, 
+          class RETURN_TYPE> 
+class TemplateMethodWrapper
+{
+public:
+  typedef RETURN_TYPE return_type;
+  typedef METHOD_TYPE method_type;
+
+  TemplateMethodWrapper(METHOD_TYPE method_pointer) : method_pointer(method_pointer)
+  {
+  }
+
+  METHOD_TYPE method_pointer;
+};
+
+template <class U, class T> 
+TemplateMethodWrapper<T,U> create_wrapper(T t) 
+{
+  TemplateMethodWrapper<T,U> wrapper(t);
+  return wrapper;
+}
+
+template <          
+  class RETURN,
+  class METHOD, 
+  class T> RETURN call(T t, METHOD m) {
+  return (t->*m.method_pointer)();
+}
+
+void test(IsolateAdaptor * piso){
+  /*
+    example of new wrapper function
+    wraps the function pointer, return type and call
+*/
+  call<void*>(
+              piso,
+              create_wrapper<void*>( &IsolateAdaptor::GetData)
+              );
+
+}
 
 template<class SELF, class FIELD, class METHODRETNATIVE >  
 void GetT(
