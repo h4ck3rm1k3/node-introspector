@@ -29,31 +29,34 @@ void GetNativeAdaptor(
 }
 
 
-template <class METHOD_TYPE, 
-          class RETURN_TYPE> 
-class TemplateMethodWrapper
-{
-public:
-  typedef RETURN_TYPE return_type;
-  typedef METHOD_TYPE method_type;
+/**
 
-  TemplateMethodWrapper(METHOD_TYPE method_pointer) : method_pointer(method_pointer)
-  {
+   generic accessor helper macros,
+   creates a static method that calls the function.
+   this is needed to adapt any given function to the needed signature
+   NAME = name of the method to call and the suffix of the new method
+   TYPE = the resulting field type
+   CONV = convert the results to the input to type
+   METHOD = method to call   
+*/
+
+
+#define CREATEACCESSOR(NAME,TYPE,CONV,METHOD)    static void GetAccessor ## NAME  (Local<String> property,const v8::PropertyCallbackInfo<Value>& info) { \
+    Local<Object> self = info.Holder();                                                                                                             \
+    Local<External> wrap = Local<External>::Cast(self->GetInternalField(0));                                                                        \
+    void* ptr_this = wrap->Value();                                                                                                                 \
+    info.GetReturnValue().Set(TYPE ((CONV)static_cast<IsolateAdaptor*>(ptr_this)->METHOD)); \
+}                                                                                                                                                   \
+
+/**
+   a generic installer for accessors
+ **/
+
+inline void generic_install (
+                      Handle<ObjectTemplate> t, 
+                      const char * name, 
+                      AccessorGetterCallback cb) {
+    Handle<String> object_name(String::New(name));
+    t->SetAccessor(object_name, cb);
   }
-
-  METHOD_TYPE method_pointer;
-};
-
-template <class U, class T> 
-TemplateMethodWrapper<T,U> create_wrapper(T t) 
-{
-  TemplateMethodWrapper<T,U> wrapper(t);
-  return wrapper;
-}
-
-template <          
-  class RETURN,
-  class METHOD, 
-  class T> RETURN call(T t, METHOD m) {
-  return (t->*m.method_pointer)();
-}
+#define INSTALLACCESSOR(NAME,FNAME)   generic_install(t,NAME,GetAccessor ## FNAME); 

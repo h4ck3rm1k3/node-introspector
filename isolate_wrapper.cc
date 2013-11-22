@@ -35,6 +35,7 @@ template<
   info.GetReturnValue().Set(value);
 }
 
+
 class IsolateAdaptor : public v8::Isolate
 {
 public:
@@ -88,51 +89,25 @@ public:
       // void SetObjectGroupId(internal::Object** object, UniqueId id);
       // void SetReferenceFromGroup(UniqueId id, internal::Object** object);
       // void SetReference(internal::Object** parent, internal::Object** child);
-  
-
-  static void GetDataAccessor(Local<String> property,
-                              const v8::PropertyCallbackInfo<Value>& info
-                              ) {
 
 
-    Local<Object> self = info.Holder();
-    Local<External> wrap = Local<External>::Cast(self->GetInternalField(0));
-    void* ptr = wrap->Value();
-    long value =  (long)static_cast<IsolateAdaptor*>(ptr)->GetData();
-    info.GetReturnValue().Set(Integer::New(value));
-  }
+  // create a generic accessor
+  CREATEACCESSOR(GetData,Integer::New,long,GetData())
+
 
   void install_accessors(Handle<ObjectTemplate> t)
   {
-    Handle<String> object_name(String::New("data"));
-    AccessorGetterCallback cb=GetDataAccessor;
-    t->SetAccessor(object_name, cb);
-
-    ///
-    Handle<String> object_name2(String::New("data2"));
-
-
-    //AccessorGetterCallback cb2= &GetT2<long, IsolateAdaptor::GetData>;
-    //    t->SetAccessor(object_name2, &GetT2<long, IsolateAdaptor::GetData>);
-
+    INSTALLACCESSOR("data2",GetData)
   }
 
 };
 
-typedef void* (v8::Isolate::* t_callback)();
 
-void test(IsolateAdaptor * piso){
-  /*
-    example of new wrapper function
-    wraps the function pointer, return type and call
-*/
-  call<void*>(
-              piso,
-              create_wrapper<void*>( &IsolateAdaptor::GetData)
-              );
-
+template <          
+  class METHOD
+  > AccessorGetterCallback convert(METHOD m) {
+  return m.method_pointer;
 }
-
 
 
 class HeadProfilerAdaptor : public v8::HeapProfiler {};
