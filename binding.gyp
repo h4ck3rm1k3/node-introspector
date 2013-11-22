@@ -2,9 +2,12 @@
   "targets": [
     {
       "target_name": "introspector",
-      "sources": [ "introspector.cc" ],
+      "sources": [ 
+      "introspector.cc",
+      "isolate_wrapper.cc"
+       ],
       'cflags': [ 
-      '--verbose', 
+#      '--verbose', 
       '-save-temps',       
                 ],
 
