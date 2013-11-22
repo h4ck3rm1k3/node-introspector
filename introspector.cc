@@ -43,14 +43,9 @@ using namespace v8;
 #include "introspector.h"
 #include "isolate_wrapper.h"
 
-
-template < class T >  void GetT3(       ) 
-{
-}
-
-
-/*
+/**
   wrap an external object and install fields to access them
+  call a method by pointer and set the result to a field
 */
 template <class T2> Handle<Object> wrap_object(T2 * o) {
 
@@ -75,7 +70,9 @@ template <class T2> Handle<Object> wrap_object(T2 * o) {
   return obj;
 }
 
-
+/*
+  call a method by pointer and set the result to a field
+*/
 template<class SELF, 
          class METHODRETNATIVE
          > 
@@ -95,7 +92,9 @@ void set_field_from_method_call(
   obj->Set(String::NewSymbol(NAME), result);
 }
 
-
+/*
+  variant to manage unsigned 
+*/
 template<class SELF, 
          class METHODRETNATIVE
          > 
@@ -115,30 +114,10 @@ void set_unsigned_field_from_method_call(
   obj->Set(String::NewSymbol(NAME), v8::Integer::NewFromUnsigned(result));
 }
 
-
-template<class SELF, class FIELD, class METHODRETNATIVE >  
-void GetT(
-          Local<String> property,
-          const v8::PropertyCallbackInfo<Value>& info,
-          METHODRETNATIVE  (SELF::*method)()const 
-          ) 
-{
-  // the holder contains the this pointer
-  Local<Object> self = info.Holder();
-
-  // the wrap around the this pointer
-  Local<External> wrap = Local<External>::Cast(self->GetInternalField(0));// this object
-
-  // the this poitner
-  void* this_ptr = wrap->Value();
-
-  FIELD value = (FIELD)(this_ptr.*method)();
-
-  info.GetReturnValue().Set(value);
-}
-
-
-
+/*
+  introspect the CPP side of node. 
+  entry point, we get a function callback and want to turn it inside out.
+*/
 template<class T> void CPP(const v8::FunctionCallbackInfo<T>& info) 
 {
   HandleScope scope(Isolate::GetCurrent());
@@ -172,6 +151,9 @@ template<class T> void CPP(const v8::FunctionCallbackInfo<T>& info)
   info.GetReturnValue().Set(obj);
 }
 
+/*
+  introspector callback routine, just installs cpp for now, to do cpp introspection.
+*/
 template<class T> void Method(const v8::FunctionCallbackInfo<T>& info) 
 {
   HandleScope scope(Isolate::GetCurrent());
